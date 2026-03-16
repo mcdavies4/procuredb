@@ -2,8 +2,68 @@ import { useState, useEffect, useCallback } from "react";
 
 const STORAGE_KEY = "procuredb-suppliers";
 const HISTORY_KEY = "procuredb-history";
+const PRICE_HISTORY_KEY = "procuredb-prices";
 const STALE_CONTACT_DAYS = 90;
 const STALE_PRICE_DAYS = 60;
+
+function parsePrice(str) {
+  if (!str) return null;
+  const n = parseFloat(String(str).replace(/[^0-9.]/g, ""));
+  return isNaN(n) ? null : n;
+}
+
+function priceCreep(priceHistory) {
+  if (!priceHistory || priceHistory.length < 2) return null;
+  const sorted = [...priceHistory].sort((a, b) => new Date(a.date) - new Date(b.date));
+  const first = parsePrice(sorted[0].price);
+  const last = parsePrice(sorted[sorted.length - 1].price);
+  if (!first || !last) return null;
+  return ((last - first) / first) * 100;
+}
+
+function PriceChart({ priceHistory }) {
+  if (!priceHistory || priceHistory.length < 2) return (
+    <div style={{ fontSize: 11, color: "#444", padding: "12px 0" }}>
+      Price trend will appear after 2+ price changes are recorded.
+    </div>
+  );
+  const sorted = [...priceHistory].sort((a, b) => new Date(a.date) - new Date(b.date));
+  const values = sorted.map(p => parsePrice(p.price)).filter(Boolean);
+  if (values.length < 2) return null;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const W = 340, H = 80, PAD = 12;
+  const points = values.map((v, i) => {
+    const x = PAD + (i / (values.length - 1)) * (W - PAD * 2);
+    const y = PAD + ((max - v) / range) * (H - PAD * 2);
+    return `${x},${y}`;
+  }).join(" ");
+  const creep = priceCreep(priceHistory);
+  const lineColor = creep > 10 ? "#c85a5a" : creep < -5 ? "#7cb87c" : "#8a9a6a";
+  return (
+    <div>
+      <svg width={W} height={H} style={{ display: "block", overflow: "visible" }}>
+        <polyline points={points} fill="none" stroke={lineColor} strokeWidth="2" strokeLinejoin="round" />
+        {values.map((v, i) => {
+          const x = PAD + (i / (values.length - 1)) * (W - PAD * 2);
+          const y = PAD + ((max - v) / range) * (H - PAD * 2);
+          return <circle key={i} cx={x} cy={y} r={3} fill={lineColor} />;
+        })}
+      </svg>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+        <span style={{ fontSize: 10, color: "#444", fontFamily: "monospace" }}>{sorted[0].date}</span>
+        <span style={{ fontSize: 10, color: "#444", fontFamily: "monospace" }}>{sorted[sorted.length - 1].date}</span>
+      </div>
+      {creep !== null && (
+        <div style={{ marginTop: 8, fontSize: 12, color: creep > 10 ? "#c85a5a" : creep < 0 ? "#7cb87c" : "#aaa" }}>
+          {creep > 0 ? "▲" : "▼"} {Math.abs(creep).toFixed(1)}% since first recorded
+          {creep > 10 && <span style={{ marginLeft: 8, fontSize: 10, color: "#c85a5a" }}>⚠ significant increase</span>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function daysSince(dateStr) {
   if (!dateStr) return 9999;
@@ -102,6 +162,7 @@ const CSS = `
 export default function App() {
   const [suppliers, setSuppliers] = useState(() => loadFromStorage(STORAGE_KEY, []));
   const [history, setHistory] = useState(() => loadFromStorage(HISTORY_KEY, []));
+  const [priceHistory, setPriceHistory] = useState(() => loadFromStorage(PRICE_HISTORY_KEY, []));
   const [view, setView] = useState("dashboard");
   const [selected, setSelected] = useState(null);
   const [editing, setEditing] = useState(null);
@@ -125,21 +186,36 @@ export default function App() {
   const handleSaveSupplier = () => {
     if (!form.name.trim()) return showToast("Supplier name required", false);
     const now = new Date().toISOString().split("T")[0];
-    let newSuppliers, newHistory;
+    let newSuppliers, newHistory, newPriceHistory = priceHistory;
     if (editing === "new") {
       const s = { ...form, id: Date.now(), createdAt: now };
       newSuppliers = [s, ...suppliers];
       newHistory = addHistoryEntry(s.id, "created", "Supplier created", history);
+      // Log initial price if set
+      if (form.price) {
+        newPriceHistory = [{ id: Date.now(), supplierId: s.id, price: form.price, date: now }, ...priceHistory];
+      }
       showToast("Supplier added ✓");
     } else {
+      const existing = suppliers.find(s => s.id === form.id);
       newSuppliers = suppliers.map(s => s.id === form.id ? { ...form } : s);
-      newHistory = addHistoryEntry(form.id, "updated", "Record updated", history);
-      showToast("Saved ✓");
+      // Detect price change
+      if (existing && form.price && form.price !== existing.price) {
+        const entry = { id: Date.now(), supplierId: form.id, price: form.price, oldPrice: existing.price, date: now };
+        newPriceHistory = [entry, ...priceHistory];
+        newHistory = addHistoryEntry(form.id, "price", `Price updated: ${existing.price} → ${form.price}`, history);
+        showToast("Saved — price change logged ✓");
+      } else {
+        newHistory = addHistoryEntry(form.id, "updated", "Record updated", history);
+        showToast("Saved ✓");
+      }
     }
     setSuppliers(newSuppliers);
     setHistory(newHistory);
+    setPriceHistory(newPriceHistory);
     saveToStorage(STORAGE_KEY, newSuppliers);
     saveToStorage(HISTORY_KEY, newHistory);
+    saveToStorage(PRICE_HISTORY_KEY, newPriceHistory);
     setEditing(null);
     if (editing === "new") setView("list");
     else setSelected(form);
@@ -341,6 +417,13 @@ export default function App() {
                     </div>
                   </div>
                 </div>
+                {/* Price trend chart */}
+                {priceHistory.filter(p => p.supplierId === selected.id).length > 0 && (
+                  <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid #1e1e1e" }}>
+                    <div style={{ fontSize: 10, color: "#555", letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>Price History</div>
+                    <PriceChart priceHistory={priceHistory.filter(p => p.supplierId === selected.id)} />
+                  </div>
+                )}
                 {selected.notes && (
                   <div style={{ marginTop: 18, padding: "12px 16px", background: "#1a1a1a", borderRadius: 3, fontSize: 13, color: "#888", lineHeight: 1.7, borderLeft: "3px solid #2a2a2a" }}>
                     {selected.notes}
