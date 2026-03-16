@@ -83,19 +83,61 @@ function healthScore(supplier) {
   return Math.max(0, score);
 }
 
+// ─── SUPABASE CONFIG ──────────────────────────────────────────────────────────
+const SUPABASE_URL = "https://igltpdpjgupjrntvffrb.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlnbHRwZHBqZ3VwanJudHZmZnJiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2NTY3MDksImV4cCI6MjA4OTIzMjcwOX0.cxKrhCCa7Kps7j5-ar-0QgqX3SYr63PzC-S1EN_dDxE";
+
+const db = {
+  async fetchAll(table) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*&order=id.desc`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    });
+    if (!res.ok) throw new Error(`fetch ${table} failed`);
+    const rows = await res.json();
+    return rows.map(r => r.data);
+  },
+  async upsert(table, record) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,
+        "Content-Type": "application/json", Prefer: "resolution=merge-duplicates"
+      },
+      body: JSON.stringify({ id: record.id, data: record, ...(record.supplierId ? { supplier_id: record.supplierId } : {}) })
+    });
+    if (!res.ok) throw new Error(`upsert ${table} failed`);
+  },
+  async remove(table, id) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+      method: "DELETE",
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    });
+    if (!res.ok) throw new Error(`delete ${table} failed`);
+  },
+  async bulkInsert(table, records) {
+    if (!records.length) return;
+    const rows = records.map(r => ({ id: r.id, data: r, ...(r.supplierId ? { supplier_id: r.supplierId } : {}) }));
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,
+        "Content-Type": "application/json", Prefer: "resolution=merge-duplicates"
+      },
+      body: JSON.stringify(rows)
+    });
+    if (!res.ok) throw new Error(`bulkInsert ${table} failed`);
+  }
+};
+
+// localStorage kept as local cache only
 function loadFromStorage(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : fallback;
-  } catch {
-    return fallback;
-  }
+  } catch { return fallback; }
 }
-
 function saveToStorage(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {}
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
 
 function exportToCSV(suppliers) {
@@ -174,6 +216,56 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [compareCategory, setCompareCategory] = useState("All");
   const [compareSelected, setCompareSelected] = useState([]);
+  const [dbReady, setDbReady] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [migrating, setMigrating] = useState(false);
+  const [showMigrate, setShowMigrate] = useState(false);
+
+  // Load from Supabase on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const [s, h, p] = await Promise.all([
+          db.fetchAll("suppliers"),
+          db.fetchAll("activity_history"),
+          db.fetchAll("price_history"),
+        ]);
+        setSuppliers(s);
+        setHistory(h);
+        setPriceHistory(p);
+        saveToStorage(STORAGE_KEY, s);
+        saveToStorage(HISTORY_KEY, h);
+        saveToStorage(PRICE_HISTORY_KEY, p);
+        setDbReady(true);
+        // Show migration banner if local data exists but cloud is empty
+        const localS = loadFromStorage(STORAGE_KEY, []);
+        if (s.length === 0 && localS.length > 0) setShowMigrate(true);
+      } catch {
+        // Supabase unavailable — fall back to localStorage silently
+        setDbReady(false);
+      }
+    })();
+  }, []);
+
+  const handleMigrateData = async () => {
+    setMigrating(true);
+    try {
+      const localS = loadFromStorage(STORAGE_KEY, []);
+      const localH = loadFromStorage(HISTORY_KEY, []);
+      const localP = loadFromStorage(PRICE_HISTORY_KEY, []);
+      await db.bulkInsert("suppliers", localS);
+      await db.bulkInsert("activity_history", localH);
+      await db.bulkInsert("price_history", localP);
+      setSuppliers(localS);
+      setHistory(localH);
+      setPriceHistory(localP);
+      setShowMigrate(false);
+      showToast(`Migrated ${localS.length} suppliers to cloud ✓`);
+    } catch {
+      showToast("Migration failed — check connection", false);
+    }
+    setMigrating(false);
+  };
 
   const showToast = (msg, ok = true) => {
     setToast({ msg, ok });
@@ -185,30 +277,35 @@ export default function App() {
     return [entry, ...currentHistory].slice(0, 500);
   }, []);
 
-  const handleSaveSupplier = () => {
+  const handleSaveSupplier = async () => {
     if (!form.name.trim()) return showToast("Supplier name required", false);
     const now = new Date().toISOString().split("T")[0];
     let newSuppliers, newHistory, newPriceHistory = priceHistory;
+    let newSupplierRecord, newHistoryEntry, newPriceEntry;
     if (editing === "new") {
       const s = { ...form, id: Date.now(), createdAt: now };
       newSuppliers = [s, ...suppliers];
-      newHistory = addHistoryEntry(s.id, "created", "Supplier created", history);
-      // Log initial price if set
+      newHistoryEntry = { id: Date.now() + Math.random(), supplierId: s.id, type: "created", text: "Supplier created", date: new Date().toISOString() };
+      newHistory = [newHistoryEntry, ...history].slice(0, 500);
+      newSupplierRecord = s;
       if (form.price) {
-        newPriceHistory = [{ id: Date.now(), supplierId: s.id, price: form.price, date: now }, ...priceHistory];
+        newPriceEntry = { id: Date.now() + 1, supplierId: s.id, price: form.price, date: now };
+        newPriceHistory = [newPriceEntry, ...priceHistory];
       }
       showToast("Supplier added ✓");
     } else {
       const existing = suppliers.find(s => s.id === form.id);
       newSuppliers = suppliers.map(s => s.id === form.id ? { ...form } : s);
-      // Detect price change
+      newSupplierRecord = form;
       if (existing && form.price && form.price !== existing.price) {
-        const entry = { id: Date.now(), supplierId: form.id, price: form.price, oldPrice: existing.price, date: now };
-        newPriceHistory = [entry, ...priceHistory];
-        newHistory = addHistoryEntry(form.id, "price", `Price updated: ${existing.price} → ${form.price}`, history);
+        newPriceEntry = { id: Date.now(), supplierId: form.id, price: form.price, oldPrice: existing.price, date: now };
+        newPriceHistory = [newPriceEntry, ...priceHistory];
+        newHistoryEntry = { id: Date.now() + Math.random(), supplierId: form.id, type: "price", text: `Price updated: ${existing.price} → ${form.price}`, date: new Date().toISOString() };
+        newHistory = [newHistoryEntry, ...history].slice(0, 500);
         showToast("Saved — price change logged ✓");
       } else {
-        newHistory = addHistoryEntry(form.id, "updated", "Record updated", history);
+        newHistoryEntry = { id: Date.now() + Math.random(), supplierId: form.id, type: "updated", text: "Record updated", date: new Date().toISOString() };
+        newHistory = [newHistoryEntry, ...history].slice(0, 500);
         showToast("Saved ✓");
       }
     }
@@ -218,48 +315,65 @@ export default function App() {
     saveToStorage(STORAGE_KEY, newSuppliers);
     saveToStorage(HISTORY_KEY, newHistory);
     saveToStorage(PRICE_HISTORY_KEY, newPriceHistory);
+    // Sync to Supabase
+    if (dbReady) {
+      setSyncing(true);
+      try {
+        await db.upsert("suppliers", newSupplierRecord);
+        await db.upsert("activity_history", newHistoryEntry);
+        if (newPriceEntry) await db.upsert("price_history", newPriceEntry);
+      } catch { showToast("Saved locally — cloud sync failed", false); }
+      setSyncing(false);
+    }
     setEditing(null);
     if (editing === "new") setView("list");
     else setSelected(form);
   };
 
-  const handleVerifyContact = (s) => {
+  const handleVerifyContact = async (s) => {
     const today = new Date().toISOString().split("T")[0];
     const updated = { ...s, contactVerified: today };
     const newSuppliers = suppliers.map(x => x.id === s.id ? updated : x);
-    const newHistory = addHistoryEntry(s.id, "verified", "Contact verified", history);
+    const entry = { id: Date.now() + Math.random(), supplierId: s.id, type: "verified", text: "Contact verified", date: new Date().toISOString() };
+    const newHistory = [entry, ...history].slice(0, 500);
     setSuppliers(newSuppliers); setHistory(newHistory);
     saveToStorage(STORAGE_KEY, newSuppliers); saveToStorage(HISTORY_KEY, newHistory);
     if (selected?.id === s.id) setSelected(updated);
     showToast("Contact verified ✓");
+    if (dbReady) { try { await db.upsert("suppliers", updated); await db.upsert("activity_history", entry); } catch {} }
   };
 
-  const handleVerifyPrice = (s) => {
+  const handleVerifyPrice = async (s) => {
     const today = new Date().toISOString().split("T")[0];
     const updated = { ...s, priceVerified: today };
     const newSuppliers = suppliers.map(x => x.id === s.id ? updated : x);
-    const newHistory = addHistoryEntry(s.id, "price", "Price verified", history);
+    const entry = { id: Date.now() + Math.random(), supplierId: s.id, type: "price", text: "Price verified", date: new Date().toISOString() };
+    const newHistory = [entry, ...history].slice(0, 500);
     setSuppliers(newSuppliers); setHistory(newHistory);
     saveToStorage(STORAGE_KEY, newSuppliers); saveToStorage(HISTORY_KEY, newHistory);
     if (selected?.id === s.id) setSelected(updated);
     showToast("Price verified ✓");
+    if (dbReady) { try { await db.upsert("suppliers", updated); await db.upsert("activity_history", entry); } catch {} }
   };
 
-  const handleAddNote = (supplierId) => {
+  const handleAddNote = async (supplierId) => {
     if (!historyNote.trim()) return;
-    const newHistory = addHistoryEntry(supplierId, historyType, historyNote, history);
+    const entry = { id: Date.now() + Math.random(), supplierId, type: historyType, text: historyNote, date: new Date().toISOString() };
+    const newHistory = [entry, ...history].slice(0, 500);
     setHistory(newHistory);
     saveToStorage(HISTORY_KEY, newHistory);
     setHistoryNote("");
     showToast("Logged ✓");
+    if (dbReady) { try { await db.upsert("activity_history", entry); } catch {} }
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     const newSuppliers = suppliers.filter(s => s.id !== id);
     setSuppliers(newSuppliers);
     saveToStorage(STORAGE_KEY, newSuppliers);
     setView("list"); setSelected(null);
     showToast("Supplier removed");
+    if (dbReady) { try { await db.remove("suppliers", id); } catch {} }
   };
 
   const staleCount = suppliers.filter(s =>
@@ -485,7 +599,9 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+          {/* Sync status dot */}
+          <div title={dbReady ? "Connected to cloud" : "Offline — saving locally"} style={{ width: 7, height: 7, borderRadius: "50%", background: syncing ? "#c8a444" : dbReady ? "#7cb87c" : "#666", boxShadow: dbReady && !syncing ? "0 0 6px #7cb87c66" : "none", transition: "all 0.3s" }} />
           {suppliers.length > 0 && (
             <button style={S.btn()} className="btn-hover" onClick={() => exportToCSV(suppliers)} title="Export to CSV">
               ↓ Export CSV
@@ -496,6 +612,17 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      {/* Migration banner */}
+      {showMigrate && (
+        <div style={{ background: "#1a1e14", borderBottom: "1px solid #3a4a2a", padding: "10px 28px", display: "flex", alignItems: "center", gap: 16 }}>
+          <span style={{ fontSize: 12, color: "#a8b88a" }}>📦 You have local supplier data — migrate it to the cloud so your whole team can access it.</span>
+          <button style={{ ...S.btn("primary"), fontSize: 11 }} className="btn-hover" onClick={handleMigrateData} disabled={migrating}>
+            {migrating ? "Migrating..." : "Migrate to Cloud"}
+          </button>
+          <button style={{ ...S.btn(), fontSize: 11 }} className="btn-hover" onClick={() => setShowMigrate(false)}>Dismiss</button>
+        </div>
+      )}
 
       <div style={S.main} className="fade-in">
 
