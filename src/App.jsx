@@ -479,9 +479,9 @@ export default function App() {
       <header style={S.header}>
         <span style={S.logo}>ProcureDB</span>
         <nav style={{ display: "flex" }}>
-          {["dashboard", "list", "compare"].map(v => (
+          {["dashboard", "list", "compare", "tasks"].map(v => (
             <button key={v} style={S.navBtn(view === v)} onClick={() => setView(v)}>
-              {v === "dashboard" ? "Dashboard" : v === "list" ? "Suppliers" : "Compare"}
+              {v === "dashboard" ? "Dashboard" : v === "list" ? "Suppliers" : v === "compare" ? "Compare" : "Tasks"}
             </button>
           ))}
         </nav>
@@ -747,6 +747,129 @@ export default function App() {
               {comparing.length === 1 && (
                 <div style={{ ...S.card, textAlign: "center", padding: "28px", color: "#555", fontSize: 13 }}>
                   Select at least one more supplier to see the comparison table.
+                </div>
+              )}
+
+              {suppliers.length === 0 && (
+                <div style={{ ...S.card, textAlign: "center", padding: "48px", color: "#444", fontSize: 13 }}>
+                  No suppliers yet — add some from the Suppliers tab first.
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* TASKS VIEW */}
+        {view === "tasks" && (() => {
+          // Build task list from all suppliers
+          const tasks = [];
+          suppliers.forEach(s => {
+            const contactAge = daysSince(s.contactVerified);
+            const priceAge = daysSince(s.priceVerified);
+            if (contactAge > STALE_CONTACT_DAYS) {
+              tasks.push({ id: `${s.id}-contact`, supplierId: s.id, type: "contact", name: s.name, category: s.category, age: contactAge, label: "Verify contact details", urgency: contactAge > 180 ? "high" : "medium" });
+            } else if (contactAge > 60) {
+              tasks.push({ id: `${s.id}-contact-soon`, supplierId: s.id, type: "contact", name: s.name, category: s.category, age: contactAge, label: "Contact due for verification soon", urgency: "low" });
+            }
+            if (priceAge > STALE_PRICE_DAYS) {
+              tasks.push({ id: `${s.id}-price`, supplierId: s.id, type: "price", name: s.name, category: s.category, age: priceAge, label: "Verify current pricing", urgency: priceAge > 120 ? "high" : "medium" });
+            } else if (priceAge > 40) {
+              tasks.push({ id: `${s.id}-price-soon`, supplierId: s.id, type: "price", name: s.name, category: s.category, age: priceAge, label: "Price due for verification soon", urgency: "low" });
+            }
+            if (!s.contact && !s.email) {
+              tasks.push({ id: `${s.id}-missing`, supplierId: s.id, type: "contact", name: s.name, category: s.category, age: 9999, label: "Missing contact info entirely", urgency: "high" });
+            }
+            if (!s.price) {
+              tasks.push({ id: `${s.id}-noprice`, supplierId: s.id, type: "price", name: s.name, category: s.category, age: 9999, label: "No price recorded", urgency: "high" });
+            }
+          });
+
+          // Sort: high → medium → low, then by age desc
+          const urgencyOrder = { high: 0, medium: 1, low: 2 };
+          tasks.sort((a, b) => urgencyOrder[a.urgency] - urgencyOrder[b.urgency] || b.age - a.age);
+
+          const high = tasks.filter(t => t.urgency === "high");
+          const medium = tasks.filter(t => t.urgency === "medium");
+          const low = tasks.filter(t => t.urgency === "low");
+
+          const urgencyColor = { high: "#c85a5a", medium: "#c8a444", low: "#6a8a6a" };
+          const urgencyBg = { high: "#1a1313", medium: "#1a1813", low: "#131a13" };
+          const urgencyBorder = { high: "#5a3030", medium: "#5a4a20", low: "#2a3a2a" };
+
+          const handleTaskDone = (task) => {
+            if (task.type === "contact") handleVerifyContact(suppliers.find(s => s.id === task.supplierId));
+            else handleVerifyPrice(suppliers.find(s => s.id === task.supplierId));
+          };
+
+          const TaskRow = ({ task }) => (
+            <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderBottom: "1px solid #1c1c1c", background: urgencyBg[task.urgency] }}>
+              <div style={{ width: 3, height: 36, borderRadius: 2, background: urgencyColor[task.urgency], flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: "#d4cfc8" }}>{task.name}</span>
+                  <Tag label={task.category} color="#6a7a5a" />
+                  <Tag label={task.type} color={task.type === "contact" ? "#6a8a9a" : "#9a8a6a"} />
+                </div>
+                <div style={{ fontSize: 12, color: "#888" }}>{task.label}
+                  {task.age < 9999 && <span style={{ marginLeft: 8, fontFamily: "monospace", fontSize: 11, color: urgencyColor[task.urgency] }}>{task.age}d ago</span>}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                <button style={S.btn()} className="btn-hover" onClick={() => { setSelected(suppliers.find(s => s.id === task.supplierId)); setView("supplier"); }}>View</button>
+                <button style={{ ...S.btn("primary"), fontSize: 11 }} className="btn-hover" onClick={() => handleTaskDone(task)}>✓ Done</button>
+              </div>
+            </div>
+          );
+
+          return (
+            <div>
+              {/* Summary bar */}
+              <div style={S.statGrid}>
+                {[
+                  { n: tasks.length, l: "Total Tasks", warn: tasks.length > 0 },
+                  { n: high.length, l: "High Priority", warn: high.length > 0 },
+                  { n: medium.length, l: "Medium Priority", warn: false },
+                  { n: low.length, l: "Coming Up Soon", warn: false },
+                ].map((st, i) => (
+                  <div key={i} style={S.stat(st.warn)}>
+                    <div style={S.statNum(st.warn)}>{st.n}</div>
+                    <div style={S.statLabel}>{st.l}</div>
+                  </div>
+                ))}
+              </div>
+
+              {tasks.length === 0 && (
+                <div style={{ ...S.card, textAlign: "center", padding: "60px 40px", borderColor: "#2a3a2a", background: "#131a13" }}>
+                  <div style={{ fontSize: 20, marginBottom: 12 }}>✓</div>
+                  <div style={{ fontFamily: "monospace", fontSize: 13, color: "#7cb87c", marginBottom: 8 }}>All clear — no tasks pending</div>
+                  <div style={{ fontSize: 12, color: "#3a4a3a" }}>All supplier data is up to date. Check back in a few weeks.</div>
+                </div>
+              )}
+
+              {high.length > 0 && (
+                <div style={{ ...S.card, padding: 0, overflow: "hidden", borderColor: urgencyBorder.high }}>
+                  <div style={{ padding: "12px 16px", background: "#1a1313", borderBottom: "1px solid #2a1a1a" }}>
+                    <span style={{ fontFamily: "monospace", fontSize: 10, color: "#c85a5a", letterSpacing: 2, textTransform: "uppercase" }}>⚠ High Priority — {high.length} task{high.length > 1 ? "s" : ""}</span>
+                  </div>
+                  {high.map(t => <TaskRow key={t.id} task={t} />)}
+                </div>
+              )}
+
+              {medium.length > 0 && (
+                <div style={{ ...S.card, padding: 0, overflow: "hidden", borderColor: urgencyBorder.medium }}>
+                  <div style={{ padding: "12px 16px", background: "#1a1813", borderBottom: "1px solid #2a2010" }}>
+                    <span style={{ fontFamily: "monospace", fontSize: 10, color: "#c8a444", letterSpacing: 2, textTransform: "uppercase" }}>Medium Priority — {medium.length} task{medium.length > 1 ? "s" : ""}</span>
+                  </div>
+                  {medium.map(t => <TaskRow key={t.id} task={t} />)}
+                </div>
+              )}
+
+              {low.length > 0 && (
+                <div style={{ ...S.card, padding: 0, overflow: "hidden", borderColor: urgencyBorder.low }}>
+                  <div style={{ padding: "12px 16px", background: "#131a13", borderBottom: "1px solid #1a2a1a" }}>
+                    <span style={{ fontFamily: "monospace", fontSize: 10, color: "#6a9a6a", letterSpacing: 2, textTransform: "uppercase" }}>Coming Up — {low.length} task{low.length > 1 ? "s" : ""}</span>
+                  </div>
+                  {low.map(t => <TaskRow key={t.id} task={t} />)}
                 </div>
               )}
 
