@@ -172,6 +172,8 @@ export default function App() {
   const [filterStale, setFilterStale] = useState(false);
   const [search, setSearch] = useState("");
   const [toast, setToast] = useState(null);
+  const [compareCategory, setCompareCategory] = useState("All");
+  const [compareSelected, setCompareSelected] = useState([]);
 
   const showToast = (msg, ok = true) => {
     setToast({ msg, ok });
@@ -477,9 +479,9 @@ export default function App() {
       <header style={S.header}>
         <span style={S.logo}>ProcureDB</span>
         <nav style={{ display: "flex" }}>
-          {["dashboard", "list"].map(v => (
+          {["dashboard", "list", "compare"].map(v => (
             <button key={v} style={S.navBtn(view === v)} onClick={() => setView(v)}>
-              {v === "dashboard" ? "Dashboard" : "Suppliers"}
+              {v === "dashboard" ? "Dashboard" : v === "list" ? "Suppliers" : "Compare"}
             </button>
           ))}
         </nav>
@@ -615,6 +617,148 @@ export default function App() {
             )}
           </div>
         )}
+
+        {/* COMPARE VIEW */}
+        {view === "compare" && (() => {
+          const cats = ["All", ...Array.from(new Set(suppliers.map(s => s.category)))];
+          const pool = compareCategory === "All" ? suppliers : suppliers.filter(s => s.category === compareCategory);
+          const toggleCompare = (id) => {
+            setCompareSelected(prev =>
+              prev.includes(id) ? prev.filter(x => x !== id) : prev.length < 5 ? [...prev, id] : prev
+            );
+          };
+          const comparing = suppliers.filter(s => compareSelected.includes(s.id));
+
+          // Best supplier: weighted health score + price competitiveness
+          let bestId = null;
+          if (comparing.length > 1) {
+            const scored = comparing.map(s => {
+              const hs = healthScore(s);
+              const p = parsePrice(s.price);
+              const prices = comparing.map(x => parsePrice(x.price)).filter(Boolean);
+              const minP = prices.length ? Math.min(...prices) : null;
+              const priceScore = p && minP ? (minP / p) * 40 : 0;
+              return { id: s.id, total: hs * 0.6 + priceScore };
+            });
+            bestId = scored.sort((a, b) => b.total - a.total)[0].id;
+          }
+
+          const rows = [
+            { label: "Category", fn: s => s.category },
+            { label: "Contact", fn: s => s.contact || "—" },
+            { label: "Email", fn: s => s.email || "—" },
+            { label: "Price", fn: s => s.price ? `${s.price}${s.priceUnit ? " / " + s.priceUnit : ""}` : "—", mono: true },
+            { label: "Price Trend", fn: s => {
+              const ph = priceHistory.filter(p => p.supplierId === s.id);
+              const c = priceCreep(ph);
+              if (c === null) return "No history";
+              return `${c > 0 ? "▲" : "▼"} ${Math.abs(c).toFixed(1)}%`;
+            }, color: s => {
+              const ph = priceHistory.filter(p => p.supplierId === s.id);
+              const c = priceCreep(ph);
+              return c === null ? "#555" : c > 10 ? "#c85a5a" : c < 0 ? "#7cb87c" : "#aaa";
+            }},
+            { label: "Health Score", fn: s => healthScore(s), mono: true, color: s => {
+              const hs = healthScore(s);
+              return hs >= 75 ? "#7cb87c" : hs >= 40 ? "#c8a444" : "#c85a5a";
+            }},
+            { label: "Contact Age", fn: s => s.contactVerified ? `${daysSince(s.contactVerified)}d ago` : "Never", mono: true, color: s => daysSince(s.contactVerified) > STALE_CONTACT_DAYS ? "#c85a5a" : "#7cb87c" },
+            { label: "Price Age", fn: s => s.priceVerified ? `${daysSince(s.priceVerified)}d ago` : "Never", mono: true, color: s => daysSince(s.priceVerified) > STALE_PRICE_DAYS ? "#c85a5a" : "#7cb87c" },
+            { label: "Notes", fn: s => s.notes ? s.notes.slice(0, 60) + (s.notes.length > 60 ? "…" : "") : "—" },
+          ];
+
+          return (
+            <div>
+              <div style={S.card}>
+                <div style={S.sectionTitle}>Step 1 — Filter by Category</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
+                  {cats.map(c => (
+                    <button key={c} style={{ ...S.btn(compareCategory === c ? "primary" : "default") }}
+                      className="btn-hover" onClick={() => { setCompareCategory(c); setCompareSelected([]); }}>
+                      {c}
+                    </button>
+                  ))}
+                </div>
+                <div style={S.sectionTitle}>Step 2 — Select Suppliers to Compare (max 5)</div>
+                {pool.length === 0 && <div style={{ fontSize: 12, color: "#444" }}>No suppliers in this category yet.</div>}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
+                  {pool.map(s => {
+                    const checked = compareSelected.includes(s.id);
+                    const hs = healthScore(s);
+                    return (
+                      <div key={s.id} onClick={() => toggleCompare(s.id)} style={{
+                        padding: "12px 14px", borderRadius: 4, cursor: "pointer",
+                        border: `1px solid ${checked ? "#8a9a6a" : "#252525"}`,
+                        background: checked ? "#1a2016" : "#1a1a1a",
+                        transition: "all 0.15s"
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: checked ? "#c8d4b8" : "#aaa" }}>{s.name}</div>
+                          <div style={{ width: 14, height: 14, borderRadius: 2, border: `2px solid ${checked ? "#8a9a6a" : "#333"}`, background: checked ? "#8a9a6a" : "transparent", flexShrink: 0 }} />
+                        </div>
+                        <div style={{ fontSize: 11, color: "#666", marginTop: 4 }}>{s.price || "No price set"}</div>
+                        <div style={{ marginTop: 8 }}><HealthBar score={hs} /></div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {comparing.length >= 2 && (
+                <div style={S.card} className="fade-in">
+                  <div style={S.sectionTitle}>Side-by-Side Comparison — {comparing.length} Suppliers</div>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                      <thead>
+                        <tr>
+                          <th style={{ textAlign: "left", padding: "8px 14px", fontSize: 10, color: "#555", fontWeight: 400, letterSpacing: 1, textTransform: "uppercase", borderBottom: "1px solid #222", width: 130 }}>Field</th>
+                          {comparing.map(s => (
+                            <th key={s.id} style={{ textAlign: "left", padding: "8px 14px", borderBottom: "1px solid #222", minWidth: 170 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                <span style={{ fontSize: 13, color: "#d4cfc8", fontWeight: 600 }}>{s.name}</span>
+                                {s.id === bestId && (
+                                  <span style={{ fontSize: 9, padding: "2px 6px", background: "#8a9a6a22", color: "#8a9a6a", border: "1px solid #8a9a6a44", borderRadius: 2, fontFamily: "monospace", textTransform: "uppercase" }}>★ Best</span>
+                                )}
+                              </div>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((row, i) => (
+                          <tr key={i} style={{ background: i % 2 === 0 ? "#111" : "transparent" }}>
+                            <td style={{ padding: "10px 14px", fontSize: 10, color: "#555", letterSpacing: 1, textTransform: "uppercase", borderBottom: "1px solid #1a1a1a", whiteSpace: "nowrap" }}>{row.label}</td>
+                            {comparing.map(s => (
+                              <td key={s.id} style={{ padding: "10px 14px", borderBottom: "1px solid #1a1a1a", fontFamily: row.mono ? "monospace" : "inherit", color: row.color ? row.color(s) : "#c8c4be", fontSize: 13 }}>
+                                {String(row.fn(s))}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ marginTop: 14, fontSize: 11, color: "#3a3a3a" }}>
+                    ★ Best = highest health score + lowest price, weighted. Click any supplier in the Suppliers tab to log a negotiation or update their record.
+                  </div>
+                </div>
+              )}
+
+              {comparing.length === 1 && (
+                <div style={{ ...S.card, textAlign: "center", padding: "28px", color: "#555", fontSize: 13 }}>
+                  Select at least one more supplier to see the comparison table.
+                </div>
+              )}
+
+              {suppliers.length === 0 && (
+                <div style={{ ...S.card, textAlign: "center", padding: "48px", color: "#444", fontSize: 13 }}>
+                  No suppliers yet — add some from the Suppliers tab first.
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
       </div>
 
       {toast && <div style={S.toast(toast.ok)} className="fade-in">{toast.msg}</div>}
