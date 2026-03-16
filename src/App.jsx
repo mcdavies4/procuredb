@@ -162,7 +162,7 @@ function HealthBar({ score }) {
   const color = score >= 75 ? "#7cb87c" : score >= 40 ? "#c8a444" : "#c85a5a";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <div style={{ width: 60, height: 6, background: "#2a2a2a", borderRadius: 3, overflow: "hidden" }}>
+      <div style={{ width: 60, height: 6, background: "#e8ebf0", borderRadius: 3, overflow: "hidden" }}>
         <div style={{ width: `${score}%`, height: "100%", background: color, transition: "width 0.4s" }} />
       </div>
       <span style={{ fontSize: 11, color, fontFamily: "monospace", minWidth: 28 }}>{score}</span>
@@ -183,20 +183,20 @@ function Tag({ label, color }) {
 const CATEGORIES = ["Electronics","Raw Materials","Packaging","Logistics","Services","IT","Office","Other"];
 const emptySupplier = { id: null, name: "", category: "Other", contact: "", email: "", phone: "", price: "", priceUnit: "", contactVerified: "", priceVerified: "", notes: "" };
 
-const typeColors = { created: "#8a9a6a", updated: "#6a8a9a", verified: "#9a8a6a", note: "#7a7a9a", price: "#9a7a6a", negotiation: "#8a6a9a" };
+const typeColors = { created: "#4a7c4a", updated: "#4a6a8a", verified: "#7a6a3a", note: "#5a5a8a", price: "#7a5a3a", negotiation: "#6a4a7a" };
 
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html, body, #root { height: 100%; }
-  body { background: #111; color: #d4cfc8; font-family: 'IBM Plex Sans', sans-serif; -webkit-font-smoothing: antialiased; }
+  body { background: #f4f5f7; color: #1a1e2a; font-family: 'IBM Plex Sans', sans-serif; -webkit-font-smoothing: antialiased; }
   ::-webkit-scrollbar { width: 5px; }
-  ::-webkit-scrollbar-track { background: #1a1a1a; }
-  ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+  ::-webkit-scrollbar-track { background: #eee; }
+  ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
   input, select, textarea, button { font-family: 'IBM Plex Sans', sans-serif; }
-  input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.4); }
-  .row-hover:hover { background: #1e1e1e !important; }
-  .btn-hover:hover { opacity: 0.8; }
+  input[type=date]::-webkit-calendar-picker-indicator { filter: none; opacity: 0.5; }
+  .row-hover:hover { background: #f0f2f5 !important; }
+  .btn-hover:hover { opacity: 0.85; }
   @keyframes fadeIn { from { opacity:0; transform: translateY(6px); } to { opacity:1; transform: translateY(0); } }
   .fade-in { animation: fadeIn 0.2s ease forwards; }
 `;
@@ -394,26 +394,26 @@ export default function App() {
 
   // ─── STYLES ───────────────────────────────────────────────────────────────
   const S = {
-    app: { minHeight: "100vh", background: "#111", display: "flex", flexDirection: "column" },
-    header: { background: "#161616", borderBottom: "1px solid #252525", padding: "0 28px", display: "flex", alignItems: "center", height: 54, position: "sticky", top: 0, zIndex: 100, gap: 0 },
-    logo: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, fontWeight: 500, color: "#8a9a6a", letterSpacing: 2, marginRight: 32, textTransform: "uppercase" },
-    navBtn: (active) => ({ background: active ? "#1d1d1d" : "transparent", border: "none", color: active ? "#d4cfc8" : "#666", padding: "10px 18px", fontSize: 12, letterSpacing: 0.5, textTransform: "uppercase", borderBottom: active ? "2px solid #8a9a6a" : "2px solid transparent", cursor: "pointer", transition: "all 0.15s" }),
+    app: { minHeight: "100vh", background: "#f4f5f7", display: "flex", flexDirection: "column" },
+    header: { background: "#ffffff", borderBottom: "1px solid #e2e5ea", padding: "0 28px", display: "flex", alignItems: "center", height: 54, position: "sticky", top: 0, zIndex: 100, gap: 0, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" },
+    logo: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, fontWeight: 500, color: "#4a6741", letterSpacing: 2, marginRight: 32, textTransform: "uppercase" },
+    navBtn: (active) => ({ background: "transparent", border: "none", color: active ? "#1a1e2a" : "#8a93a0", padding: "10px 18px", fontSize: 12, letterSpacing: 0.5, textTransform: "uppercase", borderBottom: active ? "2px solid #4a6741" : "2px solid transparent", cursor: "pointer", transition: "all 0.15s", fontWeight: active ? 600 : 400 }),
     main: { flex: 1, padding: "28px 28px", maxWidth: 1140, width: "100%", margin: "0 auto" },
-    card: { background: "#161616", border: "1px solid #252525", borderRadius: 4, padding: 22, marginBottom: 16 },
-    sectionTitle: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: "#555", letterSpacing: 2, textTransform: "uppercase", marginBottom: 16, borderBottom: "1px solid #1e1e1e", paddingBottom: 10 },
+    card: { background: "#ffffff", border: "1px solid #e2e5ea", borderRadius: 8, padding: 22, marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" },
+    sectionTitle: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: "#9aa0aa", letterSpacing: 2, textTransform: "uppercase", marginBottom: 16, borderBottom: "1px solid #eef0f3", paddingBottom: 10 },
     statGrid: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 },
-    stat: (warn) => ({ background: "#161616", border: `1px solid ${warn ? "#5a3030" : "#252525"}`, borderRadius: 4, padding: "18px 22px" }),
-    statNum: (warn) => ({ fontSize: 32, fontFamily: "'IBM Plex Mono', monospace", color: warn ? "#c85a5a" : "#d4cfc8", lineHeight: 1 }),
-    statLabel: { fontSize: 10, color: "#555", marginTop: 6, textTransform: "uppercase", letterSpacing: 1 },
-    btn: (variant = "default") => ({ padding: "8px 16px", borderRadius: 3, fontSize: 12, fontWeight: 500, border: "none", letterSpacing: 0.3, cursor: "pointer", background: variant === "primary" ? "#8a9a6a" : variant === "danger" ? "#6a3030" : "#222", color: variant === "primary" ? "#111" : variant === "danger" ? "#e8a0a0" : "#aaa", transition: "opacity 0.15s" }),
-    input: { width: "100%", background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 3, padding: "9px 12px", color: "#d4cfc8", fontSize: 13, outline: "none" },
-    label: { fontSize: 10, color: "#666", letterSpacing: 1, textTransform: "uppercase", marginBottom: 5, display: "block" },
+    stat: (warn) => ({ background: "#ffffff", border: `1px solid ${warn ? "#f5c2c2" : "#e2e5ea"}`, borderRadius: 8, padding: "18px 22px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", borderLeft: `4px solid ${warn ? "#d94f4f" : "#4a6741"}` }),
+    statNum: (warn) => ({ fontSize: 32, fontFamily: "'IBM Plex Mono', monospace", color: warn ? "#d94f4f" : "#1a1e2a", lineHeight: 1 }),
+    statLabel: { fontSize: 10, color: "#9aa0aa", marginTop: 6, textTransform: "uppercase", letterSpacing: 1 },
+    btn: (variant = "default") => ({ padding: "8px 16px", borderRadius: 6, fontSize: 12, fontWeight: 500, letterSpacing: 0.3, cursor: "pointer", transition: "opacity 0.15s", border: variant === "danger" ? "1px solid #f5c2c2" : "none", background: variant === "primary" ? "#4a6741" : variant === "danger" ? "#fff5f5" : "#f0f2f5", color: variant === "primary" ? "#ffffff" : variant === "danger" ? "#d94f4f" : "#4a5260" }),
+    input: { width: "100%", background: "#ffffff", border: "1px solid #dde1e7", borderRadius: 6, padding: "9px 12px", color: "#1a1e2a", fontSize: 13, outline: "none" },
+    label: { fontSize: 10, color: "#8a93a0", letterSpacing: 1, textTransform: "uppercase", marginBottom: 5, display: "block", fontWeight: 600 },
     row2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 },
-    tableHead: { display: "grid", gridTemplateColumns: "2fr 1fr 1.5fr 1fr 1fr 80px", padding: "8px 16px", background: "#111", fontSize: 10, color: "#555", letterSpacing: 1, textTransform: "uppercase", borderBottom: "1px solid #1e1e1e" },
-    tableRow: (stale) => ({ display: "grid", gridTemplateColumns: "2fr 1fr 1.5fr 1fr 1fr 80px", padding: "12px 16px", borderBottom: "1px solid #1c1c1c", cursor: "pointer", background: stale ? "#1a1515" : "transparent", transition: "background 0.1s" }),
-    toast: (ok) => ({ position: "fixed", bottom: 28, right: 28, zIndex: 999, background: ok ? "#1a2a1a" : "#2a1a1a", border: `1px solid ${ok ? "#3a5a3a" : "#5a3a3a"}`, color: ok ? "#7acc7a" : "#cc7a7a", padding: "10px 20px", borderRadius: 4, fontSize: 12, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: 0.5, boxShadow: "0 4px 24px rgba(0,0,0,0.5)" }),
-    badge: (color = "#c85a5a") => ({ fontSize: 9, background: color + "22", color, border: `1px solid ${color}33`, padding: "2px 6px", borderRadius: 2, fontFamily: "monospace" }),
-    histType: (active) => ({ padding: "5px 12px", borderRadius: 3, border: "none", fontSize: 11, background: active ? "#252525" : "transparent", color: active ? "#d4cfc8" : "#555", cursor: "pointer" }),
+    tableHead: { display: "grid", gridTemplateColumns: "2fr 1fr 1.5fr 1fr 1fr 80px", padding: "8px 16px", background: "#f8f9fb", fontSize: 10, color: "#9aa0aa", letterSpacing: 1, textTransform: "uppercase", borderBottom: "1px solid #e8ebf0", fontWeight: 600 },
+    tableRow: (stale) => ({ display: "grid", gridTemplateColumns: "2fr 1fr 1.5fr 1fr 1fr 80px", padding: "12px 16px", borderBottom: "1px solid #f0f2f5", cursor: "pointer", background: stale ? "#fff8f8" : "transparent", transition: "background 0.1s" }),
+    toast: (ok) => ({ position: "fixed", bottom: 28, right: 28, zIndex: 999, background: ok ? "#f0faf0" : "#fff5f5", border: `1px solid ${ok ? "#a8d8a8" : "#f5c2c2"}`, color: ok ? "#2d6e2d" : "#c03030", padding: "10px 20px", borderRadius: 8, fontSize: 12, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: 0.5, boxShadow: "0 4px 16px rgba(0,0,0,0.10)" }),
+    badge: (color = "#d94f4f") => ({ fontSize: 9, background: color + "18", color, border: `1px solid ${color}30`, padding: "2px 6px", borderRadius: 3, fontFamily: "monospace", fontWeight: 600 }),
+    histType: (active) => ({ padding: "5px 12px", borderRadius: 5, border: active ? "1px solid #dde1e7" : "1px solid transparent", fontSize: 11, background: active ? "#ffffff" : "transparent", color: active ? "#1a1e2a" : "#9aa0aa", cursor: "pointer", fontWeight: active ? 500 : 400 }),
   };
 
   // ─── EDIT VIEW ─────────────────────────────────────────────────────────────
@@ -535,13 +535,13 @@ export default function App() {
                 </div>
                 {/* Price trend chart */}
                 {priceHistory.filter(p => p.supplierId === selected.id).length > 0 && (
-                  <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid #1e1e1e" }}>
+                  <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid #eef0f3" }}>
                     <div style={{ fontSize: 10, color: "#555", letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>Price History</div>
                     <PriceChart priceHistory={priceHistory.filter(p => p.supplierId === selected.id)} />
                   </div>
                 )}
                 {selected.notes && (
-                  <div style={{ marginTop: 18, padding: "12px 16px", background: "#1a1a1a", borderRadius: 3, fontSize: 13, color: "#888", lineHeight: 1.7, borderLeft: "3px solid #2a2a2a" }}>
+                  <div style={{ marginTop: 18, padding: "12px 16px", background: "#f8f9fb", borderRadius: 6, fontSize: 13, color: "#5a6070", lineHeight: 1.7, borderLeft: "3px solid #e2e5ea" }}>
                     {selected.notes}
                   </div>
                 )}
@@ -565,14 +565,14 @@ export default function App() {
             </div>
 
             <div>
-              <div style={{ ...S.card, maxHeight: 580, overflowY: "auto" }}>
+              <div style={{ ...S.card, maxHeight: 580, overflowY: "auto", background: "#fafbfc", borderRadius: 8 }}>
                 <div style={S.sectionTitle}>History ({sHistory.length})</div>
                 {sHistory.length === 0 && <div style={{ fontSize: 12, color: "#444", padding: "8px 0" }}>No activity logged yet.</div>}
                 {sHistory.map(h => (
                   <div key={h.id} style={{ borderLeft: `2px solid ${typeColors[h.type] || "#333"}`, paddingLeft: 12, marginBottom: 16 }}>
                     <div style={{ marginBottom: 4 }}><Tag label={h.type} color={typeColors[h.type] || "#666"} /></div>
                     <div style={{ fontSize: 13, color: "#bbb", marginBottom: 3, lineHeight: 1.5 }}>{h.text}</div>
-                    <div style={{ fontSize: 10, color: "#3a3a3a", fontFamily: "monospace" }}>
+                    <div style={{ fontSize: 10, color: "#b0b8c4", fontFamily: "monospace" }}>
                       {new Date(h.date).toLocaleDateString()} · {new Date(h.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </div>
                   </div>
@@ -615,8 +615,8 @@ export default function App() {
 
       {/* Migration banner */}
       {showMigrate && (
-        <div style={{ background: "#1a1e14", borderBottom: "1px solid #3a4a2a", padding: "10px 28px", display: "flex", alignItems: "center", gap: 16 }}>
-          <span style={{ fontSize: 12, color: "#a8b88a" }}>📦 You have local supplier data — migrate it to the cloud so your whole team can access it.</span>
+        <div style={{ background: "#f0f7ee", borderBottom: "1px solid #c8dcc4", padding: "10px 28px", display: "flex", alignItems: "center", gap: 16 }}>
+          <span style={{ fontSize: 12, color: "#3d6038" }}>📦 You have local supplier data — migrate it to the cloud so your whole team can access it.</span>
           <button style={{ ...S.btn("primary"), fontSize: 11 }} className="btn-hover" onClick={handleMigrateData} disabled={migrating}>
             {migrating ? "Migrating..." : "Migrate to Cloud"}
           </button>
@@ -644,16 +644,16 @@ export default function App() {
             </div>
 
             {staleCount > 0 && (
-              <div style={{ ...S.card, borderColor: "#5a3030", background: "#191414" }}>
-                <div style={{ ...S.sectionTitle, color: "#c85a5a", borderColor: "#2a1a1a" }}>⚠ Attention Required — {staleCount} Stale Record{staleCount > 1 ? "s" : ""}</div>
+              <div style={{ ...S.card, borderColor: "#f5c2c2", background: "#fff8f8" }}>
+                <div style={{ ...S.sectionTitle, color: "#d94f4f", borderColor: "#fde0e0" }}>⚠ Attention Required — {staleCount} Stale Record{staleCount > 1 ? "s" : ""}</div>
                 {suppliers
                   .filter(s => daysSince(s.contactVerified) > STALE_CONTACT_DAYS || daysSince(s.priceVerified) > STALE_PRICE_DAYS)
                   .slice(0, 6)
                   .map(s => (
-                    <div key={s.id} className="row-hover" style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0", borderBottom: "1px solid #221a1a", cursor: "pointer" }}
+                    <div key={s.id} className="row-hover" style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0", borderBottom: "1px solid #fde8e8", cursor: "pointer" }}
                       onClick={() => { setSelected(s); setView("supplier"); }}>
                       <div style={{ flex: 1 }}>
-                        <span style={{ fontSize: 13, color: "#c8bfb8" }}>{s.name}</span>
+                        <span style={{ fontSize: 13, color: "#2a3040" }}>{s.name}</span>
                         <span style={{ marginLeft: 8 }}><Tag label={s.category} color="#8a9a6a" /></span>
                       </div>
                       <div style={{ display: "flex", gap: 6 }}>
@@ -663,7 +663,7 @@ export default function App() {
                       <HealthBar score={healthScore(s)} />
                     </div>
                   ))}
-                {staleCount > 6 && <div style={{ fontSize: 11, color: "#554040", marginTop: 10 }}>+{staleCount - 6} more — view Suppliers tab</div>}
+                {staleCount > 6 && <div style={{ fontSize: 11, color: "#c08080", marginTop: 10 }}>+{staleCount - 6} more — view Suppliers tab</div>}
               </div>
             )}
 
@@ -681,7 +681,7 @@ export default function App() {
                 {history.slice(0, 8).map(h => {
                   const sup = suppliers.find(s => s.id === h.supplierId);
                   return (
-                    <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "7px 0", borderBottom: "1px solid #1c1c1c" }}>
+                    <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "7px 0", borderBottom: "1px solid #f0f2f5" }}>
                       <Tag label={h.type} color={typeColors[h.type] || "#666"} />
                       <div style={{ flex: 1, fontSize: 12, color: "#888" }}>
                         {sup
@@ -710,7 +710,7 @@ export default function App() {
 
             {filtered.length === 0 && (
               <div style={{ padding: "48px 0", textAlign: "center" }}>
-                <div style={{ fontSize: 13, color: "#3a3a3a" }}>
+                <div style={{ fontSize: 13, color: "#aab0bc" }}>
                   {suppliers.length === 0 ? 'No suppliers yet. Click "+ Add Supplier" to begin.' : "No suppliers match your filter."}
                 </div>
               </div>
@@ -815,8 +815,8 @@ export default function App() {
                     return (
                       <div key={s.id} onClick={() => toggleCompare(s.id)} style={{
                         padding: "12px 14px", borderRadius: 4, cursor: "pointer",
-                        border: `1px solid ${checked ? "#8a9a6a" : "#252525"}`,
-                        background: checked ? "#1a2016" : "#1a1a1a",
+                        border: `1px solid ${checked ? "#4a6741" : "#e2e5ea"}`,
+                        background: checked ? "#f0f7ee" : "#f8f9fb",
                         transition: "all 0.15s"
                       }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -853,10 +853,10 @@ export default function App() {
                       </thead>
                       <tbody>
                         {rows.map((row, i) => (
-                          <tr key={i} style={{ background: i % 2 === 0 ? "#111" : "transparent" }}>
-                            <td style={{ padding: "10px 14px", fontSize: 10, color: "#555", letterSpacing: 1, textTransform: "uppercase", borderBottom: "1px solid #1a1a1a", whiteSpace: "nowrap" }}>{row.label}</td>
+                          <tr key={i} style={{ background: i % 2 === 0 ? "#f8f9fb" : "transparent" }}>
+                            <td style={{ padding: "10px 14px", fontSize: 10, color: "#555", letterSpacing: 1, textTransform: "uppercase", borderBottom: "1px solid #eef0f3", whiteSpace: "nowrap" }}>{row.label}</td>
                             {comparing.map(s => (
-                              <td key={s.id} style={{ padding: "10px 14px", borderBottom: "1px solid #1a1a1a", fontFamily: row.mono ? "monospace" : "inherit", color: row.color ? row.color(s) : "#c8c4be", fontSize: 13 }}>
+                              <td key={s.id} style={{ padding: "10px 14px", borderBottom: "1px solid #eef0f3", fontFamily: row.mono ? "monospace" : "inherit", color: row.color ? row.color(s) : "#3a4255", fontSize: 13 }}>
                                 {String(row.fn(s))}
                               </td>
                             ))}
@@ -920,7 +920,7 @@ export default function App() {
           const low = tasks.filter(t => t.urgency === "low");
 
           const urgencyColor = { high: "#c85a5a", medium: "#c8a444", low: "#6a8a6a" };
-          const urgencyBg = { high: "#1a1313", medium: "#1a1813", low: "#131a13" };
+          const urgencyBg = { high: "#fff5f5", medium: "#fffbf0", low: "#f4fbf4" };
           const urgencyBorder = { high: "#5a3030", medium: "#5a4a20", low: "#2a3a2a" };
 
           const handleTaskDone = (task) => {
@@ -929,7 +929,7 @@ export default function App() {
           };
 
           const TaskRow = ({ task }) => (
-            <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderBottom: "1px solid #1c1c1c", background: urgencyBg[task.urgency] }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderBottom: "1px solid #eef0f3", background: urgencyBg[task.urgency] }}>
               <div style={{ width: 3, height: 36, borderRadius: 2, background: urgencyColor[task.urgency], flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
@@ -966,16 +966,16 @@ export default function App() {
               </div>
 
               {tasks.length === 0 && (
-                <div style={{ ...S.card, textAlign: "center", padding: "60px 40px", borderColor: "#2a3a2a", background: "#131a13" }}>
-                  <div style={{ fontSize: 20, marginBottom: 12 }}>✓</div>
-                  <div style={{ fontFamily: "monospace", fontSize: 13, color: "#7cb87c", marginBottom: 8 }}>All clear — no tasks pending</div>
-                  <div style={{ fontSize: 12, color: "#3a4a3a" }}>All supplier data is up to date. Check back in a few weeks.</div>
+                <div style={{ ...S.card, textAlign: "center", padding: "60px 40px", borderColor: "#c8dcc4", background: "#f4fbf4" }}>
+                  <div style={{ fontSize: 20, marginBottom: 12, color: "#4a6741" }}>✓</div>
+                  <div style={{ fontFamily: "monospace", fontSize: 13, color: "#3d6038", marginBottom: 8 }}>All clear — no tasks pending</div>
+                  <div style={{ fontSize: 12, color: "#6a8a68" }}>All supplier data is up to date. Check back in a few weeks.</div>
                 </div>
               )}
 
               {high.length > 0 && (
                 <div style={{ ...S.card, padding: 0, overflow: "hidden", borderColor: urgencyBorder.high }}>
-                  <div style={{ padding: "12px 16px", background: "#1a1313", borderBottom: "1px solid #2a1a1a" }}>
+                  <div style={{ padding: "12px 16px", background: "#fff0f0", borderBottom: "1px solid #fad8d8" }}>
                     <span style={{ fontFamily: "monospace", fontSize: 10, color: "#c85a5a", letterSpacing: 2, textTransform: "uppercase" }}>⚠ High Priority — {high.length} task{high.length > 1 ? "s" : ""}</span>
                   </div>
                   {high.map(t => <TaskRow key={t.id} task={t} />)}
@@ -984,7 +984,7 @@ export default function App() {
 
               {medium.length > 0 && (
                 <div style={{ ...S.card, padding: 0, overflow: "hidden", borderColor: urgencyBorder.medium }}>
-                  <div style={{ padding: "12px 16px", background: "#1a1813", borderBottom: "1px solid #2a2010" }}>
+                  <div style={{ padding: "12px 16px", background: "#fffbf0", borderBottom: "1px solid #f0e0b0" }}>
                     <span style={{ fontFamily: "monospace", fontSize: 10, color: "#c8a444", letterSpacing: 2, textTransform: "uppercase" }}>Medium Priority — {medium.length} task{medium.length > 1 ? "s" : ""}</span>
                   </div>
                   {medium.map(t => <TaskRow key={t.id} task={t} />)}
@@ -993,7 +993,7 @@ export default function App() {
 
               {low.length > 0 && (
                 <div style={{ ...S.card, padding: 0, overflow: "hidden", borderColor: urgencyBorder.low }}>
-                  <div style={{ padding: "12px 16px", background: "#131a13", borderBottom: "1px solid #1a2a1a" }}>
+                  <div style={{ padding: "12px 16px", background: "#f4fbf4", borderBottom: "1px solid #c8e0c8" }}>
                     <span style={{ fontFamily: "monospace", fontSize: 10, color: "#6a9a6a", letterSpacing: 2, textTransform: "uppercase" }}>Coming Up — {low.length} task{low.length > 1 ? "s" : ""}</span>
                   </div>
                   {low.map(t => <TaskRow key={t.id} task={t} />)}
