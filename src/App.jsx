@@ -158,7 +158,70 @@ function exportToCSV(suppliers) {
   URL.revokeObjectURL(url);
 }
 
-function HealthBar({ score }) {
+// ─── CSV IMPORT UTILITIES ─────────────────────────────────────────────────────
+function parseCSVText(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(",").map(h => h.replace(/^"|"$/g, "").trim().toLowerCase());
+  return lines.slice(1).map(line => {
+    const cols = [];
+    let cur = "", inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      if (line[i] === '"') { inQ = !inQ; }
+      else if (line[i] === "," && !inQ) { cols.push(cur.trim()); cur = ""; }
+      else cur += line[i];
+    }
+    cols.push(cur.trim());
+    const row = {};
+    headers.forEach((h, i) => { row[h] = cols[i] || ""; });
+    return row;
+  }).filter(r => Object.values(r).some(v => v));
+}
+
+const COLUMN_MAP = {
+  name:            ["name","supplier","supplier name","company","company name","vendor","vendor name","organisation","organization"],
+  category:        ["category","type","supplier type","vendor type","segment"],
+  contact:         ["contact","contact name","contact person","person","rep","account manager","account rep","key contact"],
+  email:           ["email","email address","e-mail","mail"],
+  phone:           ["phone","phone number","telephone","tel","mobile","cell"],
+  price:           ["price","rate","unit price","cost","unit cost","amount"],
+  priceUnit:       ["unit","price unit","uom","unit of measure","per"],
+  contactVerified: ["contact verified","contact date","last contact","verified date"],
+  priceVerified:   ["price verified","price date","last price","price last verified"],
+  notes:           ["notes","note","comments","comment","remarks","description"],
+};
+
+function detectMapping(headers) {
+  const map = {};
+  headers.forEach(h => {
+    const hl = h.toLowerCase().trim();
+    for (const [field, aliases] of Object.entries(COLUMN_MAP)) {
+      if (!map[field] && aliases.includes(hl)) map[field] = h;
+    }
+  });
+  return map;
+}
+
+function applyMapping(rows, mapping) {
+  const now = new Date().toISOString().split("T")[0];
+  return rows.map(row => {
+    const get = field => mapping[field] ? (row[mapping[field].toLowerCase()] || row[mapping[field]] || "") : "";
+    return {
+      id: Date.now() + Math.random(),
+      name: get("name"),
+      category: get("category") || "Other",
+      contact: get("contact"),
+      email: get("email"),
+      phone: get("phone"),
+      price: get("price"),
+      priceUnit: get("priceUnit"),
+      contactVerified: get("contactVerified"),
+      priceVerified: get("priceVerified"),
+      notes: get("notes"),
+      createdAt: now,
+    };
+  }).filter(r => r.name.trim());
+}
   const color = score >= 75 ? "#7cb87c" : score >= 40 ? "#c8a444" : "#c85a5a";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -220,6 +283,11 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const [migrating, setMigrating] = useState(false);
   const [showMigrate, setShowMigrate] = useState(false);
+  const [importRows, setImportRows] = useState(null);
+  const [importMapping, setImportMapping] = useState({});
+  const [importHeaders, setImportHeaders] = useState([]);
+  const [importPreview, setImportPreview] = useState([]);
+  const [importing, setImporting] = useState(false);
 
   // Load from Supabase on mount
   useEffect(() => {
@@ -277,7 +345,67 @@ export default function App() {
     return [entry, ...currentHistory].slice(0, 500);
   }, []);
 
-  const handleSaveSupplier = async () => {
+  const handleFileUpload = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target.result;
+      const rows = parseCSVText(text);
+      if (!rows.length) return showToast("No data found in file", false);
+      const headers = Object.keys(rows[0]);
+      const mapping = detectMapping(headers);
+      setImportHeaders(headers);
+      setImportMapping(mapping);
+      setImportRows(rows);
+      setImportPreview(applyMapping(rows, mapping).slice(0, 5));
+      setView("import");
+    };
+    reader.readAsText(file);
+  };
+
+  const handleMappingChange = (field, header) => {
+    const newMapping = { ...importMapping, [field]: header };
+    setImportMapping(newMapping);
+    setImportPreview(applyMapping(importRows, newMapping).slice(0, 5));
+  };
+
+  const handleConfirmImport = async () => {
+    setImporting(true);
+    const now = new Date().toISOString().split("T")[0];
+    const mapped = applyMapping(importRows, importMapping);
+    // Deduplicate against existing — skip same name (case insensitive)
+    const existingNames = new Set(suppliers.map(s => s.name.toLowerCase().trim()));
+    const newOnes = mapped.filter(s => !existingNames.has(s.name.toLowerCase().trim()));
+    const skipped = mapped.length - newOnes.length;
+    if (!newOnes.length) {
+      showToast(`All ${skipped} rows already exist — nothing imported`, false);
+      setImporting(false);
+      return;
+    }
+    const newSuppliers = [...newOnes, ...suppliers];
+    const histEntries = newOnes.map(s => ({ id: Date.now() + Math.random(), supplierId: s.id, type: "created", text: "Imported from CSV", date: new Date().toISOString() }));
+    const newHistory = [...histEntries, ...history].slice(0, 500);
+    // Price history for any that have prices
+    const priceEntries = newOnes.filter(s => s.price).map(s => ({ id: Date.now() + Math.random(), supplierId: s.id, price: s.price, date: now }));
+    const newPriceHistory = [...priceEntries, ...priceHistory];
+    setSuppliers(newSuppliers);
+    setHistory(newHistory);
+    setPriceHistory(newPriceHistory);
+    saveToStorage(STORAGE_KEY, newSuppliers);
+    saveToStorage(HISTORY_KEY, newHistory);
+    saveToStorage(PRICE_HISTORY_KEY, newPriceHistory);
+    if (dbReady) {
+      try {
+        await db.bulkInsert("suppliers", newOnes);
+        await db.bulkInsert("activity_history", histEntries);
+        if (priceEntries.length) await db.bulkInsert("price_history", priceEntries);
+      } catch { showToast("Saved locally — cloud sync failed", false); }
+    }
+    setImportRows(null); setImportHeaders([]); setImportMapping({}); setImportPreview([]);
+    setImporting(false);
+    showToast(`Imported ${newOnes.length} suppliers${skipped ? ` — ${skipped} skipped (duplicates)` : ""} ✓`);
+    setView("list");
+  };
     if (!form.name.trim()) return showToast("Supplier name required", false);
     const now = new Date().toISOString().split("T")[0];
     let newSuppliers, newHistory, newPriceHistory = priceHistory;
@@ -593,23 +721,20 @@ export default function App() {
       <header style={S.header}>
         <span style={S.logo}>ProcureDB</span>
         <nav style={{ display: "flex" }}>
-          {["dashboard", "list", "compare", "tasks"].map(v => (
+          {["dashboard", "list", "compare", "tasks", "import"].map(v => (
             <button key={v} style={S.navBtn(view === v)} onClick={() => setView(v)}>
-              {v === "dashboard" ? "Dashboard" : v === "list" ? "Suppliers" : v === "compare" ? "Compare" : "Tasks"}
+              {v === "dashboard" ? "Dashboard" : v === "list" ? "Suppliers" : v === "compare" ? "Compare" : v === "tasks" ? "Tasks" : "Import"}
             </button>
           ))}
         </nav>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
           {/* Sync status dot */}
-          <div title={dbReady ? "Connected to cloud" : "Offline — saving locally"} style={{ width: 7, height: 7, borderRadius: "50%", background: syncing ? "#c8a444" : dbReady ? "#7cb87c" : "#666", boxShadow: dbReady && !syncing ? "0 0 6px #7cb87c66" : "none", transition: "all 0.3s" }} />
+          <div title={dbReady ? "Connected to cloud" : "Offline — saving locally"} style={{ width: 7, height: 7, borderRadius: "50%", background: syncing ? "#c8a444" : dbReady ? "#4a9a4a" : "#bbb", boxShadow: dbReady && !syncing ? "0 0 6px #4a9a4a44" : "none", transition: "all 0.3s" }} />
           {suppliers.length > 0 && (
-            <button style={S.btn()} className="btn-hover" onClick={() => exportToCSV(suppliers)} title="Export to CSV">
-              ↓ Export CSV
-            </button>
+            <button style={S.btn()} className="btn-hover" onClick={() => exportToCSV(suppliers)}>↓ Export CSV</button>
           )}
-          <button style={S.btn("primary")} className="btn-hover" onClick={() => { setForm({ ...emptySupplier }); setEditing("new"); }}>
-            + Add Supplier
-          </button>
+          <button style={S.btn()} className="btn-hover" onClick={() => setView("import")}>↑ Import CSV</button>
+          <button style={S.btn("primary")} className="btn-hover" onClick={() => { setForm({ ...emptySupplier }); setEditing("new"); }}>+ Add Supplier</button>
         </div>
       </header>
 
@@ -1008,6 +1133,102 @@ export default function App() {
             </div>
           );
         })()}
+
+        {/* IMPORT VIEW */}
+        {view === "import" && (
+          <div className="fade-in">
+            {!importRows ? (
+              <div style={S.card}>
+                <div style={S.sectionTitle}>Import Suppliers from CSV</div>
+                <div
+                  onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = "#4a6741"; e.currentTarget.style.background = "#f0f7ee"; }}
+                  onDragLeave={e => { e.currentTarget.style.borderColor = "#dde1e7"; e.currentTarget.style.background = "#fafbfc"; }}
+                  onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = "#dde1e7"; e.currentTarget.style.background = "#fafbfc"; handleFileUpload(e.dataTransfer.files[0]); }}
+                  style={{ border: "2px dashed #dde1e7", borderRadius: 8, padding: "48px 40px", textAlign: "center", background: "#fafbfc", transition: "all 0.2s", cursor: "pointer" }}
+                  onClick={() => document.getElementById("csv-upload").click()}
+                >
+                  <div style={{ fontSize: 32, marginBottom: 12 }}>📂</div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: "#2a3040", marginBottom: 8 }}>Drop your CSV file here</div>
+                  <div style={{ fontSize: 13, color: "#8a93a0", marginBottom: 20 }}>or click to browse — works with Excel exports saved as CSV</div>
+                  <button style={S.btn("primary")} className="btn-hover" onClick={e => { e.stopPropagation(); document.getElementById("csv-upload").click(); }}>Choose File</button>
+                  <input id="csv-upload" type="file" accept=".csv,.txt" style={{ display: "none" }} onChange={e => handleFileUpload(e.target.files[0])} />
+                </div>
+                <div style={{ marginTop: 20, padding: "16px 20px", background: "#f8f9fb", borderRadius: 8, border: "1px solid #e8ebf0" }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "#4a5260", marginBottom: 10, textTransform: "uppercase", letterSpacing: 1 }}>Tips for best results</div>
+                  <div style={{ fontSize: 12, color: "#6a7282", lineHeight: 1.8 }}>
+                    • First row should be column headers<br/>
+                    • Common headers detected automatically: Name, Email, Phone, Contact, Price, Category, Notes<br/>
+                    • From Excel: File → Save As → CSV (Comma delimited)<br/>
+                    • From Google Sheets: File → Download → CSV<br/>
+                    • Duplicate supplier names will be skipped automatically
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={S.card}>
+                  <div style={S.sectionTitle}>Map Your Columns — {importRows.length} rows detected</div>
+                  <div style={{ fontSize: 13, color: "#5a6070", marginBottom: 20 }}>
+                    We've auto-detected your column mapping below. Adjust any that don't look right, then click Import.
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
+                    {Object.keys(COLUMN_MAP).map(field => (
+                      <div key={field}>
+                        <label style={S.label}>{field.replace(/([A-Z])/g, " $1").trim()}</label>
+                        <select style={S.input} value={importMapping[field] || ""} onChange={e => handleMappingChange(field, e.target.value)}>
+                          <option value="">— skip —</option>
+                          {importHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {importPreview.length > 0 && (
+                  <div style={S.card}>
+                    <div style={S.sectionTitle}>Preview — first {importPreview.length} rows</div>
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                        <thead>
+                          <tr style={{ background: "#f8f9fb" }}>
+                            {["Name","Category","Contact","Email","Phone","Price","Notes"].map(h => (
+                              <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, color: "#9aa0aa", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", borderBottom: "1px solid #eef0f3", whiteSpace: "nowrap" }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importPreview.map((row, i) => (
+                            <tr key={i} style={{ borderBottom: "1px solid #f0f2f5" }}>
+                              <td style={{ padding: "9px 12px", fontWeight: 500, color: "#1a1e2a" }}>{row.name || <span style={{ color: "#ccc" }}>—</span>}</td>
+                              <td style={{ padding: "9px 12px", color: "#5a6070" }}>{row.category}</td>
+                              <td style={{ padding: "9px 12px", color: "#5a6070" }}>{row.contact || "—"}</td>
+                              <td style={{ padding: "9px 12px", color: "#4a6741" }}>{row.email || "—"}</td>
+                              <td style={{ padding: "9px 12px", color: "#5a6070" }}>{row.phone || "—"}</td>
+                              <td style={{ padding: "9px 12px", fontFamily: "monospace", color: "#2a3040" }}>{row.price || "—"}</td>
+                              <td style={{ padding: "9px 12px", color: "#8a93a0", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.notes || "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {importRows.length > 5 && (
+                      <div style={{ fontSize: 11, color: "#9aa0aa", marginTop: 10 }}>+{importRows.length - 5} more rows not shown</div>
+                    )}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
+                  <button style={S.btn("primary")} className="btn-hover" onClick={handleConfirmImport} disabled={importing}>
+                    {importing ? "Importing..." : `Import ${importRows.length} Suppliers`}
+                  </button>
+                  <button style={S.btn()} className="btn-hover" onClick={() => { setImportRows(null); setImportHeaders([]); setImportMapping({}); setImportPreview([]); }}>
+                    ← Choose Different File
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
       </div>
 
